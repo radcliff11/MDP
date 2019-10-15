@@ -159,6 +159,7 @@ void executeCommand(char command) {
     case 'P':
       //calDistance();
       printDistanceReading();
+       printSensorReading();
      // moveBackwards(150);
       break;
 
@@ -261,19 +262,19 @@ void executeCommand(char command) {
 //read and return the median of (5*11) front left sensor values in grid distance
 int getFrontL() {
   double median = readFrontSensor_FL();
-  return (shortGrid(median, 5.25, 15.80, 33.00));
+  return (shortGrid(median, 5.2, 15.80, 33.00));//5.25
 }
 
 //read and return the median of (5*11) front center sensor values in grid distance
 int getFrontC() {
   double median = readFrontSensor_FC();
-  return (shortGrid(median, 6.80, 18.00, 33.00));
+  return (shortGrid(median, 5.2, 18.00, 33.00));// 6.8
 }
 
 //read and return the median of (5*11) front left sensor values in grid distance
 int getFrontR() {
   double median = readFrontSensor_FR();
-  return (shortGrid(median, 6.80, 18.00, 30.00));
+  return (shortGrid(median, 5.4, 18.00, 30.00));//6.80
 }
 
 //read and return the median of (5*11) left sensor values in grid distance
