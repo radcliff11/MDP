@@ -11,7 +11,7 @@ SharpIR LL(A3, 20150);   //PS4
 SharpIR RM(A4, 1080);   //PS6
 SharpIR RR(A5, 1080);   //PS5
 
-const int NUM_SAMPLES_MEDIAN = 8;
+const int NUM_SAMPLES_MEDIAN = 19;
 double frontL_Value = 0;
 double frontC_Value = 0;
 double frontR_Value = 0;
@@ -24,243 +24,274 @@ void setup() {
   // initialize serial communication
   setupSerialConnection();
   setupMotorEncoder();
-//  setupSensorInterrupt();
   setupPID();
-
-//  while(Serial.available() > 0) {
-//    char clearBuffer = Serial.read();
-//  }
-//  delay(20);  
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.setTimeout(50);
 }
- void setupSerialConnection() {
+
+void setupSerialConnection() {
   Serial.begin(115200);
   while (!Serial);
 }
+
 //void loop() {
-//////moveForward(5*10);
-////
-////
-////moveForward(1*10);
-//////    
-//  //  delay(1000);
-////printDistanceReading();
-//
-//alignFront();
-// }
-//
-//void loop() {
-//  delay(1000);
-//for(int i = 0;i<5;i++){
-//  moveForward(1*10);
-//  delay(1000);
-//}
-//  rotLeft(180);
-//  for(int i = 0;i<5;i++){
-//  moveForward(1*10);
-//  delay(1000);
+// delay(1000);
+//  for(int i = 0;i<2;i++){
+//    moveForward(1*10);
+//    delay(1000);
 //  }
+//  rotLeft(180);
+////  rotRight(180);
+////  for(int i = 0;i<2;i++){
+////  moveForward(2*10);
+////  delay(1000);
+////  }
 //}
-//CAMERA
-//
+
 /* FOR CALIBRATION
- MOVE GRID 1, DIAGONAL, 
-moveForward(1*10);
-TURN LEFT, RIGHT, 
-turnLeft(90);turnLeft(90);delay(2000);
-turnRight(90);turnRight(90);delay(2000);
-turnLeft(45);turnRight(45);delay(2000);
+  MOVE GRID 1, DIAGONAL,
+  moveForward(1*10);
+  TURN LEFT, RIGHT,
+  turnLeft(90);turnLeft(90);delay(2000);
+  turnRight(90);turnRight(90);delay(2000);
+  turnLeft(45);turnRight(45);delay(2000);
 
-DIAGONAL
-turnLeft(45);moveForward(2*10);delay(2000);
-turnRight(45);moveForward(2*10);delay(2000);
+  DIAGONAL
+  turnLeft(45);moveForward(2*10);delay(2000);
+  turnRight(45);moveForward(2*10);delay(2000);
 
-ALIGN FRONT
-turnRight(90);alignFront();turnLeft(90);alignFront();delay(2000);
+  ALIGN FRONT
+  turnRight(90);alignFront();turnLeft(90);alignFront();delay(2000);
 
-printDistanceReading();
- */
+  printDistanceReading();
+*/
 
-///////////////////////////////////////////////////////////////////////////// END OF FOREVER LOOP////////////////////////////////////////////////////////////////////////////////////////////////////////////// 
-
-// the loop routine runs over and over again forever
+String commandString = "";
 void loop() {
-
-  // if not connected
-  if (!Serial) {
-    //Serial.println("Waiting for connection");
-  }
-  //for rceiving string from rpi 
-  String dummy;
-
-  // while data is available in the serial buffer
-  while (Serial.available() > 0){
-    //dummy = Serial.peek();
-    /// Instruction Example "A1:W"
-    dummy = Serial.readString();
-    String commands = dummy.substring(3);
-    int num_commands = commands.length();
- 
-    for (int i = 0; i <= num_commands-1; i++){
-      if(commands[i] == '\n'){
-        break;
+      while (commandString.length() > 0) {
+        executeCommand(commandString[0]);
+        delay(1);
+        if (commandString.length() == 1) {
+          commandString = "";
+          break;
+        }
+        commandString = commandString.substring(1, -1);
       }
 
-      char command = commands[i];//get the value of the command from the 3rd char
-      switch (command) {
-        // move forward 
-        case 'W':
-          moveForward(10);
-          if((LF.distance()-7.5 <=6.5 )&& (RF.distance() - 6.5 <=7.5)){
-            calAngle();
-            calDistance();
-            
-          }
-          printSensorReading();
-          break;
-        // turn left
-        case 'A':
-        
-          rotLeft(90);
-        
-           if((LF.distance()-7.5 <=6.5 )&& (RF.distance() - 6.5 <=7.5)){
-            calAngle();
-            calDistance();
-            
-          }
-          printSensorReading();
-          
-          break;
-        // move backward
-        case 'S':
-        
-          moveBackwards(10);delay(10);printSensorReading();
-        
-          break;
-        // turn right
-        case 'D':
-          rotRight(90);
-        
-           if((LF.distance()-7.5 <=6.5 )&& (RF.distance() - 6.5 <=7.5)){
-            calAngle();
-            calDistance();
-            
-          }
-          printSensorReading();
-       
-          break;
-        // move diagonally
-        case '2':
-          moveForwardTick(800);printSensorReading();
-           
-          break;        
-        // brake
-        case 'P':
-          calDistance();
-          //printDistanceReading();
-         
-          break;
-        // turn left diagonally
-        case 'Q':
-          rotLeft(45);printSensorReading();
-          
-          break;
-        // turn right diagonally
-        case 'E':
-          rotRight(45);printSensorReading();
-          
-          break;
-        // turn 180 degrees
-        case 'X':
-          rotRight(180);
-          
-          printSensorReading();
-          
-          break; 
-         // print Sensor Reading
-        case 'F':
-       // calDistance();
-         //calAngle();
-         calDistance();
-         
-        calAngle();
-       
-          //printSensorReading();
-          
-          break;
-        case 'V':
-        rotRight(90);
-        calDistance();
-        calAngle();
-        delay(10);
-        rotLeft(90);
-        //  alignFront();       
-        
-          break; 
-        case 'C':
-          rotRight(90);
-          calDistance();
-          calAngle();
-          delay(10);
-          rotLeft(90);
-           calDistance();
-//          alignFront();
-          break;  
-        case 'Z':
-          rotLeft(90);
-          calDistance();
-        calAngle();
-          delay(10);
-          rotRight(90); 
-          calDistance();
-          break;
-        case 'M':
-          calDistance();
-        calAngle();
-          delay(10);
-          calDistance();
-          rotLeft(90);
-          
-          break;      
-        }
-      } 
+  //   printDistanceReading();
+  //  calAngle();
+  //calDistance();
+
+//  for (int i = 0; i < 4; i++) {
+//    moveForward(1 * 10);
+//    delay(1000);
+//  }
+//    delay(3000);
+}
+
+void serialEvent()  {
+  while (Serial.available()) {
+    commandString = commandString + char(Serial.read());
   }
 }
 
+// ==================== COMMANDS ===========================
+
+void executeCommand(char command) {
+  switch (command) {
+
+    // move forward
+    case 'W':
+      moveForward(10);
+      
+      if ((getFrontL() == 1) && (getFrontR() == 1)) {
+        calDistance();
+        calAngle();
+        calDistance();
+
+      }
+      printSensorReading();
+     // delay(20);
+      break;
+
+    // turn left
+    case 'A':
+
+      rotLeft(90);
+
+      if ((getFrontL() == 1) && (getFrontR() == 1)) {
+        calDistance();
+        calAngle();
+        calDistance();
+
+      }
+      printSensorReading();
+      //delay(20);
+      break;
+
+    // move backward
+    case 'S':
+      moveBackwards(10);
+      //delay(10);
+      printSensorReading();
+      break;
+
+    // turn right
+    case 'D':
+      rotRight(90);
+      if ((getFrontL() == 1) && (getFrontR() == 1)) {
+          calDistance();
+        calAngle();
+        calDistance();
+
+      }
+      printSensorReading();
+    //  delay(20);
+      break;
+
+    // move diagonally
+    case 'R':
+      moveForwardTick(800);
+      printSensorReading();
+      break;
+
+    // brake
+    case 'P':
+      //calDistance();
+      printDistanceReading();
+     // moveBackwards(150);
+      break;
+
+    // turn left diagonally
+    case 'Q':
+      rotLeft(45);
+      printSensorReading();
+      break;
+
+    // turn right diagonally
+    case 'E':
+      rotRight(45);
+      printSensorReading();
+      break;
+
+    // turn 180 degrees
+    case 'X':
+      rotRight(180);
+      printSensorReading();
+      //delay(20);
+      break;
+
+    // print Sensor Reading
+    case 'F':
+        rotRight(90);
+        calAngle();
+        calDistance();
+
+        //delay(10);
+        rotLeft(90);
+      break;
+
+    case 'V':
+      rotRight(90);
+
+      
+      
+      calAngle();
+      calDistance();
+      calAngle();
+     // delay(10);
+      rotLeft(90);
+      if ((getFrontL() == 1) && (getFrontR() == 1)) {
+      calDistance();
+      }
+      //  alignFront();
+      break;
+
+    case 'L':
+      //printDistanceReading();
+      calAngle();
+      break;
+
+
+    case 'Z':
+      if ((getFrontL() == 1) && (getFrontR() == 1) && (getLeft() == 1 )) {
+        rotLeft(90);
+        calAngle();
+        calDistance();
+
+        //delay(10);
+        rotRight(90);
+        calDistance();
+      }
+      else if ((getFrontL() == 1) && (getFrontR() == 1) && (getRightMiddle() == 1 )) {
+        rotRight(90);
+        calAngle();
+        calDistance();
+
+        //delay(10);
+        rotLeft(90);
+        calDistance();
+      }
+
+      break;
+    case '1':
+      moveForward(10);
+      break;
+    case '2':
+      moveForward(10);
+      break;
+    case '3':
+      moveForward(10);
+      break;
+    case '4':
+      moveForward(10);
+      break;
+    case '5':
+      moveForward(10);
+      break;
+    case '6':
+      moveForward(10);
+      break;
+    case '7':
+      moveForward(10);
+      break;
+  }
+}
 
 //read and return the median of (5*11) front left sensor values in grid distance
 int getFrontL() {
   double median = readFrontSensor_FL();
-  return (shortGrid(median, 6.50, 17.9, 33.00));  
+  return (shortGrid(median, 5.25, 15.80, 33.00));
 }
 
 //read and return the median of (5*11) front center sensor values in grid distance
 int getFrontC() {
   double median = readFrontSensor_FC();
-  return (shortGrid(median, 8.00, 20.10, 33.00));  
+  return (shortGrid(median, 6.80, 18.00, 33.00));
 }
 
 //read and return the median of (5*11) front left sensor values in grid distance
 int getFrontR() {
   double median = readFrontSensor_FR();
-  return (shortGrid(median, 7.5, 19.00, 30.00));  
+  return (shortGrid(median, 6.80, 18.00, 30.00));
 }
 
 //read and return the median of (5*11) left sensor values in grid distance
 int getLeft() {
   double median = readLeftSensor();
-  return (shortGrid(median, 10.4, 16.60, 26.0));  
+  return (shortGrid(median, 9.90, 15.80, 26.0));
 }
 
 //read and return the median of (5*11) right middle sensor values in grid distance
 int getRightMiddle() {
   double median = readRightMiddleSensor();
-  return (shortGrid(median, 8.20, 19.00, 33.00));  
+  return (shortGrid(median, 7.40, 18.20, 33.00));
 }
 
 //read and return the median of (5*11) right sensor values in grid distance
 int getRight() {
   double median = readRightSensor();
-  return (shortGrid(median, 4.06, 16.30, 45.82));  
+  return (shortGrid(median, 4.06, 16.30, 45.82));
 }
 
 
@@ -268,10 +299,10 @@ int getRight() {
 double readFrontSensor_FL() {
   RunningMedian frontL_Median = RunningMedian(NUM_SAMPLES_MEDIAN);
   for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
-    double irDistance = LF.distance()-7.5;
+    double irDistance = LF.distance() - 7.5;
     //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
-    
-    frontL_Median.add(irDistance);    // add in the array  
+
+    frontL_Median.add(irDistance);    // add in the array
     if (frontL_Median.getCount() == NUM_SAMPLES_MEDIAN) {
       if (frontL_Median.getHighest() - frontL_Median.getLowest() > 50)
         return -10;
@@ -285,10 +316,10 @@ double readFrontSensor_FL() {
 double readFrontSensor_FC() {
   RunningMedian frontC_Median = RunningMedian(NUM_SAMPLES_MEDIAN);
   for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
-    double irDistance = CF.distance()-6.3;
+    double irDistance = CF.distance() - 6.3;
     //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
-    
-    frontC_Median.add(irDistance);    // add in the array  
+
+    frontC_Median.add(irDistance);    // add in the array
     if (frontC_Median.getCount() == NUM_SAMPLES_MEDIAN) {
       if (frontC_Median.getHighest() - frontC_Median.getLowest() > 50)
         return -10;
@@ -305,8 +336,8 @@ double readFrontSensor_FR() {
   for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
     double irDistance = RF.distance() - 6.5;
     //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
-    
-    frontR_Median.add(irDistance);    // add in the array  
+
+    frontR_Median.add(irDistance);    // add in the array
     if (frontR_Median.getCount() == NUM_SAMPLES_MEDIAN) {
       if (frontR_Median.getHighest() - frontR_Median.getLowest() > 15)
         return -10;
@@ -322,8 +353,8 @@ double readLeftSensor() {
   for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
     double irDistance = LL.distance() - 9.76;
     //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
-    
-    left_Median.add(irDistance);    // add in the array  
+
+    left_Median.add(irDistance);    // add in the array
     if (left_Median.getCount() == NUM_SAMPLES_MEDIAN) {
       if (left_Median.getHighest() - left_Median.getLowest() > 15)
         return -10;
@@ -340,8 +371,8 @@ double readRightMiddleSensor() {
   for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
     double irDistance = RM.distance() - 10.21;
     //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
-    
-    rightMiddle_Median.add(irDistance);    // add in the array  
+
+    rightMiddle_Median.add(irDistance);    // add in the array
     if (rightMiddle_Median.getCount() == NUM_SAMPLES_MEDIAN) {
       if (rightMiddle_Median.getHighest() - rightMiddle_Median.getLowest() > 15)
         return -10;
@@ -358,11 +389,11 @@ double readRightSensor() {
   for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
     double irDistance = RR.distance() - 7.18;
     //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
-    
-    right_Median.add(irDistance);    // add in the array  
+
+    right_Median.add(irDistance);    // add in the array
     if (right_Median.getCount() == NUM_SAMPLES_MEDIAN) {
-//      if (right_Median.getHighest() - right_Median.getLowest() > 15)
-//        return -10;
+      //      if (right_Median.getHighest() - right_Median.getLowest() > 15)
+      //        return -10;
       right_Value = right_Median.getMedian();
     }
   }
@@ -372,7 +403,7 @@ double readRightSensor() {
 
 // determine which grid it belongs for short sensor
 int shortGrid(double distance, double offset1, double offset2,  double offset3) {
-  if (distance == -10) 
+  if (distance == -10)
     return -1;
   else if (distance <= offset1)
     return 1;
@@ -386,7 +417,7 @@ int shortGrid(double distance, double offset1, double offset2,  double offset3) 
 
 // determine which grid it belongs for long sensor
 int longGrid(double distance, double offset1, double offset2,  double offset3, double offset4, double offset5, double offset6) {
-  if (distance == -10) 
+  if (distance == -10)
     return -1;
   else if (distance <= offset1)
     return 1;
@@ -405,10 +436,10 @@ int longGrid(double distance, double offset1, double offset2,  double offset3, d
 }
 
 void printSensorReading() {
-//  print sensor reading to serial monitor
+  //  print sensor reading to serial monitor
   Serial.print("A2:"); //Serial.print("FL:");
   Serial.print((int)getFrontL()); // print front-left sensor distance
-  Serial.print(",");//Serial.print("|FC:");  
+  Serial.print(",");//Serial.print("|FC:");
   Serial.print((int)getFrontC()); // print front-center sensor distance
   Serial.print(",");//Serial.print("|FR:");
   Serial.print((int)getFrontR()); // print front-right sensor distance
@@ -416,19 +447,21 @@ void printSensorReading() {
   Serial.print((int)getLeft()); // print front-right sensor distance
   Serial.print(",");//Serial.print("|R1:");
   Serial.print((int)getRightMiddle()); // print front-right sensor distanced
-//  Serial.print("|R2:");
-//  Serial.print((int)getRight()); // print front-right sensor distance
+  //  Serial.print("|R2:");
+  //  Serial.print((int)getRight()); // print front-right sensor distance
   Serial.print("\n");
   // flush waits for transmission of outoing serial data to complete
-  //Serial.flush();
-  delay(10);
+  Serial.flush();
+  //  digitalWrite(LED_BUILTIN, HIGH);
+  //  delay(10);
+  //  digitalWrite(LED_BUILTIN, LOW);
 }
 
 void printDistanceReading() {
   //print sensor reading to serial monitor
   Serial.print("FL:");
   Serial.print(readFrontSensor_FL()); // print front-left sensor distance
-  Serial.print("|FC:");  
+  Serial.print("|FC:");
   Serial.print(readFrontSensor_FC()); // print front-center sensor distance
   Serial.print("|FR:");
   Serial.print(readFrontSensor_FR()); // print front-right sensor distance
@@ -436,10 +469,10 @@ void printDistanceReading() {
   Serial.print(readLeftSensor()); // print left sensor distance
   Serial.print("|R1:");
   Serial.print(readRightMiddleSensor()); // print right-middle sensor distance
-//  Serial.print("|R2:");
-//  Serial.print(readRighIItSensor()); // print right sensor distance
+  Serial.print("|R2:");
+  Serial.print(readRightSensor()); // print right sensor distance
   Serial.print("|\n");
   // flush waits for transmission of outoing serial data to complete
- // Serial.flush();
-//  delay(1);
+  Serial.flush();
+  //  delay(1);
 }
