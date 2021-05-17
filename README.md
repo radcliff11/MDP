@@ -6,3 +6,7 @@ Learning Outcomes
   4. Learn to work in a Multidisciplinary team
   5. Present your work using various Media
 
+LearderBoard Challenge: 
+  A. Exploration - 1st (2nd learderboard Wk11)
+  B. Fastest Path - 1st (2nd learderboard Wk11)
+  C. Image Recognition - No placing
