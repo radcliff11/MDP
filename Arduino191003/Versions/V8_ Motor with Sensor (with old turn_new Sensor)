@@ -1,0 +1,950 @@
+#include <MsTimer2.h>
+#include <EnableInterrupt.h>
+#include "DualVNH5019MotorShield.h"
+#include <PID_v1.h>
+
+const int LEFT_PULSE = 3;           // M1 - LEFT motor pin number on Arduino board
+const int RIGHT_PULSE = 11;         // M2 - RIGHT motor pin number on Arduino board
+const int MOVE_FAST_SPEED = 300;    //if target distance more than 30cm 
+const int MOVE_MAX_SPEED = 300;     //if target distance more than 60cm 350
+
+const int TURN_MAX_SPEED = 400;     //change this value to calibrate turning. If the rotation overshoots, decrease the speed 
+const int ROTATE_MAX_SPEED = 380;   //used in rotateLeft() and rotateRight()
+
+int TURN_TICKS_L = 630;//689,620       //change this left encoder ticks value to calibrate left turn 
+int TURN_TICKS_R = 622;//692       //change this right encoder ticks value to calibrate right turn 
+//int TURN_TICKS_L_180 = 1500;
+//int TURN_TICKS_R_180 = 1493;
+
+//TICKS[0] for general cm -> ticks calibration. 
+//TICKS[1-9] with specific distance (by grids) e.g. distance=5, TICKS[5] 
+//Grids           1     2     3     4     5     6     7     8    9  //2 is used for diagonal move
+int TICKS[9] = {515, 800, 1672, 2290, 2890, 3495, 4095, 4685, 5295};  // for movement of each grid
+                                         
+const int LEFTTICK[14] = {20, 25, 30, 35, 40, 233, 393, 343, 489, 65, 70, 75, 80, 85};//adjust LEFTICK[5] for 45 Degree, LEFTICK[5] for right diagonal movement
+const int RIGHTTICK[14] = {20, 25, 30, 35, 40, 223, 283, 333, 450, 65, 70, 75, 80, 85};//adjust RIGHTTICK[5] for 45 Degree,RIGHTTICK[6]for right diagonal movement
+
+
+const double kp = 18.7, ki = 0.1, kd = 2.00;
+
+// for PID
+double tick_R = 0;
+double tick_L = 0;
+double speed_O = 0;
+// for PID2
+int right_encoder_val = 0, left_encoder_val = 0;
+void RightEncoderInc(){right_encoder_val++;}
+void LeftEncoderInc(){left_encoder_val++;}
+
+//motor declaration as 'md' e.g. to set motor speed ==> md.setSpeeds(Motor1, Motor2)
+DualVNH5019MotorShield md;  //our motor is Pololu Dual VNH5019 Motor Driver Shield 
+PID myPID(&tick_R, &speed_O, &tick_L, kp, ki, kd, REVERSE);
+
+void setupMotorEncoder() {
+  md.init();
+  pinMode(LEFT_PULSE, INPUT);
+  pinMode(RIGHT_PULSE, INPUT);
+  enableInterrupt(LEFT_PULSE, leftMotorTime, CHANGE); //Enables interrupt on a left motor (M1) - enable interrupt basically enables the interrupt flag and enables Interrupt service routines to run
+  enableInterrupt(RIGHT_PULSE, rightMotorTime, CHANGE); //Enables interrupt on a left motor (M1)
+}
+
+// not used
+void stopMotorEncoder() {
+  disableInterrupt(LEFT_PULSE);
+  disableInterrupt(RIGHT_PULSE);
+}
+
+void setupPID() {
+  myPID.SetMode(AUTOMATIC);
+  myPID.SetOutputLimits(-400, 400);   // change this value for PID calibration. This is the maximum speed PID sets to
+  myPID.SetSampleTime(5);
+}
+
+// when forward command is received, taking in the parameter of how many cm it should move
+void moveForward(int distancee) {
+  initializeTick();   // set all tick to 0
+  initializeMotor_Start();  // set motor and brake to 0
+  int distance = cmToTicks(distancee); // convert grid movement to tick value
+  double currentSpeed = 0;
+  boolean initialStatus = true;
+
+  if (distancee == 10) {    // if number of tick to move < 60, move at a slower speed of 200
+    currentSpeed = MOVE_MAX_SPEED;
+  } else {                // if number of tick to move >= 60, move at the max speed of 350
+    currentSpeed = MOVE_FAST_SPEED;
+  }
+
+  //error checking feedback in a while loop
+  while (tick_R <= distance || tick_L+30 <= distance) {
+    if (distancee == 10)
+    {
+      if (myPID.Compute()) {
+        if (initialStatus) {
+          md.setSpeeds(0, currentSpeed + speed_O);
+          delay(5);
+          initialStatus = false;
+        }
+        md.setSpeeds(currentSpeed+0.1375 * speed_O, currentSpeed + speed_O);
+      }
+    }
+    else    // for distancee >= 20
+    {
+      if (myPID.Compute()) {
+        if (initialStatus) {
+          md.setSpeeds(0, currentSpeed + speed_O);
+          delay(7);         
+          initialStatus = false;
+        }
+      md.setSpeeds(currentSpeed+ 0.1375* speed_O, currentSpeed + speed_O);
+      }
+    }
+  }
+  if (distancee == 10)
+  {/*
+    initializeMotor2_End();  //brakes the motor
+    initializeTick();   // set all tick to 0
+    initializeMotor_Start();  // set motor and brake to 0
+    while (tick_R < 3) { // -15
+        if (myPID.Compute())
+        {
+          md.setSpeeds(0, currentSpeed - speed_O);
+        }
+      }*/
+      initializeMotor2_End();   //brakes the motor
+  }
+  else
+  {/*
+    initializeMotorFront_End();  //brakes the motor
+    initializeTick();   // set all tick to 0
+    initializeMotor_Start();  // set motor and brake to 0
+    while (tick_R < 5) { // -15
+        if (myPID.Compute())
+        {
+          md.setSpeeds(currentSpeed + speed_O, 0);
+        }
+      }*/
+    initializeMotor3_End();   //brakes the motor
+  }
+}
+
+// for moving diagonal
+void moveForwardTick(int distance) {
+  initializeTick();   // set all tick to 0
+  initializeMotor_Start();  // set motor and brake to 0
+  double currentSpeed = MOVE_MAX_SPEED;
+  
+  //error checking feedback in a while loop
+  while (tick_R <= distance || tick_L <= distance) {
+    if (myPID.Compute()) {
+      md.setSpeeds(currentSpeed + speed_O, currentSpeed - speed_O);
+    }
+  }
+  initializeMotor_End();  //brakes the motor
+}
+
+// when backward command is received, taking in the parameter of how many cm it should move
+void moveBackwards(int distance) {
+  initializeTick();
+  initializeMotor_Start();
+  distance = cmToTicks(distance);
+  double currentSpeed = MOVE_MAX_SPEED;
+  boolean initialStatus = true;
+   
+  //error checking feedback in a while loop
+  while (tick_R <= distance || tick_L +30<= distance) {
+    if (myPID.Compute()) {
+      if (initialStatus) {
+        //md.setSpeeds(-(currentSpeed + speed_O), 0);
+         md.setSpeeds(0, -(currentSpeed + speed_O));
+        //delay(5);
+        initialStatus = false;
+      }
+      md.setSpeeds(-(currentSpeed+0.1275* speed_O), -(currentSpeed - speed_O));
+    }
+  }
+  initializeMotorBack_End();  //brakes the motor
+}
+
+// when left command is received, taking in the parameter of how much angle it should rotate anticlockwise
+void turnLeft(int angle) {
+  int i=0;    // for loop iterator
+  double currentSpeed = TURN_MAX_SPEED;
+
+  if (angle >= 90) {
+    for (i = 0; i<angle; i+=90) {
+      initializeTick();
+      initializeMotor_Start();
+      while (tick_R < TURN_TICKS_L+50 || tick_L < TURN_TICKS_L) { // -15
+        if (myPID.Compute())
+          md.setSpeeds(-(currentSpeed +speed_O), currentSpeed - speed_O);
+      }
+      initializeMotorTurnL_End();   //brakes the motor
+    }
+  }
+  if (angle - i > 0) {
+    turnLeftDeg(angle-i);
+  }
+  initializeMotorTurnL_End();   //brakes the motor
+}
+
+// will turn <90 degree
+void turnLeftDeg(int angle) {
+  int index = (angle-20)/5; // index is the index no. of the LEFTTICKS array of size 14
+  int tick;
+  if (index <= 14)
+    tick = LEFTTICK[index];
+    
+  initializeMotor_Start();
+  double currentSpeed = TURN_MAX_SPEED;
+  initializeTick();
+  while (tick_R < tick+50 || tick_L < tick) {
+    if (myPID.Compute())
+      md.setSpeeds(-(currentSpeed + speed_O), currentSpeed - speed_O);
+  }
+}
+
+// when right command is received, taking in the parameter of how much angle it should rotate clockwise
+void turnRight(int angle) {
+  int i=0;    // for loop iterator
+  double currentSpeed = TURN_MAX_SPEED;
+
+  if (angle >= 90) {
+    for (i=0; i<angle; i=i+90) {
+      initializeTick();
+      initializeMotor_Start();
+      while (tick_R < (TURN_TICKS_R) || tick_L < (TURN_TICKS_R)) { // turn left and right -115 when turn 90 degree to right
+        if (myPID.Compute())
+          md.setSpeeds((currentSpeed + speed_O), -(currentSpeed - speed_O));
+      }
+    }
+  }
+  if (angle - i > 0) {
+    turnRightDeg(angle-i);
+  }
+  initializeMotorTurnR_End();   //brakes the motor
+  
+}
+
+
+
+// will turn <90 degree
+void turnRightDeg(int angle) {
+  int index = (angle-20)/5; // index is the index no. of the LEFTTICKS array of size 14
+  int tick;
+  if (index <= 14)
+    tick = RIGHTTICK[index];
+
+  initializeMotor_Start();
+  double currentSpeed = TURN_MAX_SPEED;
+  initializeTick();
+  while (tick_R < tick || tick_L < tick+90) {
+    if (myPID.Compute())
+      md.setSpeeds((currentSpeed + speed_O), -(currentSpeed - speed_O));
+  }
+}
+
+
+
+//for enableInterrupt() function, to add the tick for counting 
+void leftMotorTime() {
+  tick_L++;
+}
+
+//for enableInterrupt() function, to add the tick for counting
+void rightMotorTime() {
+  tick_R++;
+}
+
+// to reset/initialize the ticks and speed for PID
+void initializeTick() {
+  tick_R = 0;
+  tick_L = 0;
+  speed_O = 0;
+}
+
+// to reset/initialize the motor speed and brakes for PID
+void initializeMotor_Start() {
+  md.setSpeeds(0, 0);
+  md.setBrakes(0, 0);
+}
+
+// brakes when moving forward (please revise) - thad
+void initializeMotorFront_End() {
+  md.setSpeeds(0, 0);
+  //md.setBrakes(400, 400);
+
+  for (int i = 200; i <400; i+=50) {
+    md.setBrakes(i*1.01, i);
+    delay(10);
+  }
+  
+  delay(50);
+}
+
+// brakes when moving forward (please revise) - thad
+void initializeMotor_End() {
+  md.setSpeeds(0, 0);
+  //md.setBrakes(400, 400);
+  
+  for (int i = 200; i <400; i+=50) {
+    md.setBrakes(i, i);
+    delay(10);
+  }
+  
+  delay(50);
+}
+
+// brakes when moving forward (please revise) - thad
+void initializeMotor2_End() {
+  md.setSpeeds(0, 0);
+  //md.setBrakes(400, 400);
+  
+  for (int i = 200; i <400; i+=50) {
+    md.setBrakes(i*1.05, i);
+    delay(20);
+  }
+  
+  delay(50);
+}
+
+// brakes when moving forward (please revise) - thad
+void initializeMotor3_End() {
+  md.setSpeeds(0, 0);
+  md.setBrakes(400, 400);
+
+  delay(50);
+}
+
+// brakes when moving backward (please revise) - thad
+void initializeMotorBack_End() {
+  md.setSpeeds(0, 0);
+  //md.setBrakes(400, 400);
+  
+  for (int i = 200; i <400; i+=50) {
+    md.setBrakes(i*1.07, i);
+    delay(10);
+  }
+  
+  delay(50);
+}
+
+// brakes when turning left/right (please revise) - thad
+void initializeMotorTurnR_End() {
+  md.setSpeeds(0, 0);
+  md.setBrakes(375, 350);
+  
+//  for (int i = 200; i <400; i+=100) {
+//    md.setBrakes(i, i);
+//    delay(5);
+//  }
+ delay(50);
+}
+//For LEFT TURN
+void initializeMotorTurnL_End() {
+  md.setSpeeds(0, 0);
+  md.setBrakes(375, 350);
+  
+//  for (int i = 200; i <400; i+=100) {
+//    md.setBrakes(i, i);
+//    delay(5);
+//  }
+ delay(50);
+}
+
+// converting distance (cm) to ticks
+int cmToTicks(int cm) {
+  int dist = (cm / 10) - 1; //dist is the index no. of the TICKS array of size 10
+  if (dist < 10)
+    return TICKS[dist]; //TICKS[10] = {545, 1155, 1760, 2380, 2985, 3615, 4195, 4775, 5370};
+  return 0;
+}
+
+//use this function to check RPM of the motors
+void testRPM(int M1Speed, int M2Speed){
+  md.setSpeeds(M1Speed, M2Speed);  //setSpeeds(Motor1, Motor2)
+  delay(1000);
+  Serial.println(tick_R/562.25 * 60 );
+  Serial.println(tick_L/562.25 * 60);
+  tick_R = 0;
+  tick_L = 0;
+}
+
+//to avoid 1x1 obstacle
+void avoid(){
+
+  while(1){
+    moveForward(1*10);
+    
+    int frontIR1 = (int)getFrontL();
+    int frontIR2 = (int)getFrontC();
+    int frontIR3 = (int)getFrontR();
+
+    int flag = 0;
+        
+    if(frontIR2 == 1){  //Obstacle is in front of Front Center sensor
+      Serial.println("Obstacle Detected by Front Center Sensor");
+      delay(500);turnLeft(90);
+      delay(500);moveForward(2*10);
+      delay(500);turnRight(90);
+      delay(500);moveForward(4*10);
+      delay(500);turnRight(90);
+      delay(500);moveForward(2*10);
+      delay(500);turnLeft(90);
+    }
+    else if(frontIR1 == 1 && frontIR2 != 1){ //Obstacle is in front of Front Left sensor
+      Serial.println("Obstacle Detected by Front Left Sensor");
+      delay(500);turnRight(90);
+      delay(500);moveForward(1*10);
+      delay(500);turnLeft(90);
+      delay(500);moveForward(4*10);
+      delay(500);turnLeft(90);
+      delay(500);moveForward(1*10);
+      delay(500);turnRight(90);
+    }
+    else if(frontIR3 == 1 && frontIR2 != 1){ //Obstacle is in front of Front Right sensor
+      Serial.println("Obstacle Detected by Front Right Sensor");
+      delay(500);turnRight(90);
+      delay(500);moveForward(3*10);
+      delay(500);turnLeft(90);
+      delay(500);moveForward(4*10);
+      delay(500);turnLeft(90);
+      delay(50000);moveForward(3*10);
+      delay(5000);turnRight(90);
+    }
+    delay(500);
+  }  
+}
+
+//to avoid 1x1 obstacle diagonally
+//void avoidDiagonal(){
+//
+//  while(1){
+//    moveForward(1*10);
+//    
+//    int frontIR1 = (int)getFrontL();
+//    int frontIR2 = (int)getFrontC();
+//    int frontIR3 = (int)getFrontR();
+//
+//    int flag = 0;
+//        
+//    if(frontIR2 == 2){  //Obstacle is in front of Front Center sensor
+//      Serial.println("Obstacle Detected by Front Center Sensor");
+//     // moveForwardTick(346);
+//      delay(500);
+//      turnLeft(45);
+//      delay(500);
+//      moveForwardTick(2546);//2546
+//      delay(500);
+//      turnRight(45);
+//      turnRight(45);
+//      delay(500);
+//      moveForwardTick(2100);
+//      delay(500);
+//      turnLeft(50);
+//    }
+//    else if(frontIR3 == 1 && frontIR2 != 1){ //Obstacle is in front of Front Left sensor
+//      Serial.println("Obstacle Detected by Front Right Sensor");
+//      delay(500);
+//      turnLeft(50);
+//      delay(500);
+//      moveForwardTick(1000);
+//      delay(500);
+//      turnRight(45);
+//      delay(500);
+//      moveForwardTick(850);
+//      delay(500);
+//      turnRight(45);
+//      delay(500);
+//      moveForwardTick(1220);
+//      delay(500);
+//      turnLeft(55);
+//    }
+//    else if(frontIR1 == 1 && frontIR2 != 1){ //Obstacle is in front of Front Right sensor
+//      Serial.println("Obstacle Detected by Front Left Sensor");
+//      delay(500);
+//      turnRight(45);
+//      delay(500);
+//      moveForwardTick(1000);
+//      delay(500);
+//      turnLeft(55);
+//      delay(500);
+//      moveForwardTick(1000);
+//      delay(500);
+//      turnLeft(55);
+//      delay(500);
+//      moveForwardTick(1020);
+//      delay(500);
+//      turnRight(50);
+//    }
+//    delay(500);
+//  }  
+//}
+
+void rotateRight(int distance, int direct) {
+  initializeTick();
+  initializeMotor_Start();
+  double currentSpeed = ROTATE_MAX_SPEED;
+
+  while (tick_R < distance) {
+    if (myPID.Compute())
+      md.setSpeeds(0, direct*(currentSpeed - speed_O));
+  }
+  initializeMotor_End();
+}
+
+void rotateLeft(int distance, int direct) {
+  initializeTick();
+  initializeMotor_Start();
+
+  double currentSpeed = ROTATE_MAX_SPEED;
+  while (tick_L < distance) {
+    if (myPID.Compute())
+      md.setSpeeds(direct*(currentSpeed - speed_O), 0);
+  }
+  initializeMotor_End();
+}
+void rotLeft(int distance) {
+  initializeTick();
+  initializeMotor_Start();
+
+  double currentSpeed = ROTATE_MAX_SPEED;
+  while (tick_L < distance) {
+    if (myPID.Compute())
+      md.setSpeeds(-(currentSpeed + speed_O), currentSpeed + speed_O);
+  }
+  initializeMotor_End();
+}
+
+void rotRight(int distance) {
+  initializeTick();
+  initializeMotor_Start();
+
+  double currentSpeed = ROTATE_MAX_SPEED;
+  while (tick_R < distance) {
+    if (myPID.Compute())
+      md.setSpeeds((currentSpeed + speed_O), -(currentSpeed + speed_O));
+  }
+  initializeMotor_End();
+}
+
+// for getting the number of tick to move a certain grid
+void forwardCalibration(int maxGrid) {
+  double desiredDistanceSensor1 = -2.09;
+  double desiredDistanceSensor3 = -1.89;
+  for (int grid = 1; grid < maxGrid+1; grid++)
+  {
+    moveForward(grid * 10);
+    int ticksL = TICKS[grid-1];
+    int ticksR = TICKS[grid-1];
+    Serial.print("Tick before moving ");
+    Serial.print(grid);
+    Serial.print(" grid: ");
+    Serial.print(ticksL);
+    Serial.print(", ");
+    Serial.print(ticksR);
+    Serial.print("\n");
+  
+    double diffLeft = readFrontSensor_FL() - desiredDistanceSensor1;
+    double diffRight = readFrontSensor_FR() - desiredDistanceSensor3;
+
+    while ((abs(diffLeft) >= 0.2 && abs(diffLeft) < 4)|| (abs(diffRight) >= 0.2 && abs(diffRight) < 4))
+    {
+      if (diffLeft <  0 || diffRight < 0)
+      {
+        if (abs(diffLeft) < abs(diffRight))
+        {
+          ticksR -= (int)(abs(diffRight*12));
+          rotateRight(abs(diffRight*12), abs(diffRight)/diffRight*1);
+        }
+        else
+        {
+          ticksL -= (int)(abs(diffLeft*12));
+          rotateLeft(abs(diffLeft*12), abs(diffLeft)/diffLeft*1);
+        }
+      }
+      else
+      {
+        if (abs(diffLeft) >= 0.2)
+        {
+          if (abs(diffLeft)/diffLeft == 1)
+            ticksL += (int)(abs(diffLeft*12));
+          else if (abs(diffLeft)/diffLeft == -1)
+            ticksL -= (int)(abs(diffLeft*12));
+          rotateLeft(abs(diffLeft*12), abs(diffLeft)/diffLeft*1);
+        }
+        else if (abs(diffRight) >= 0.2)
+        {
+          if (abs(diffRight)/diffRight == 1)
+            ticksR += (int)(abs(diffRight*12));
+          else if (abs(diffLeft)/diffRight == -1)
+            ticksR -= (int)(abs(diffRight*12));
+          rotateRight(abs(diffRight*12), abs(diffRight)/diffRight*1);
+        }
+      }
+      
+      diffLeft = readFrontSensor_FL() - desiredDistanceSensor1;
+      diffRight = readFrontSensor_FR() - desiredDistanceSensor3;
+    }
+    Serial.print("Tick after moving ");
+    Serial.print(grid);
+    Serial.print(" grid: ");
+    Serial.print(ticksL);
+    Serial.print(", ");
+    Serial.print(ticksR);
+    Serial.print("\n");
+
+
+  }
+}
+
+void alignFront() {
+  delay(2);
+ 
+  int count = 0;
+  double desiredDistanceSensor1 = 0.22;  // minus more means nearer to wall  -0.45
+  double desiredDistanceSensor3 = 1.08;  // plus more means further from wall -0.67
+  
+  double diffLeft = readFrontSensor_FL() - desiredDistanceSensor1;
+  double diffRight = readFrontSensor_FR() - desiredDistanceSensor3;
+
+  while ((abs(diffLeft) > 0.2 && abs(diffLeft) < 20)|| (abs(diffRight) > 0.2 && abs(diffRight) < 20))
+  {   
+    if (abs(diffLeft) >= 0.2)
+    {
+      rotateLeft(abs(diffLeft*8), abs(diffLeft)/diffLeft*1);
+    }
+    if (abs(diffRight) >= 0.2)
+    {
+      rotateRight(abs(diffRight*8), abs(diffRight)/diffRight*1);
+    }
+    diffLeft = readFrontSensor_FL() - desiredDistanceSensor1;
+    diffRight = readFrontSensor_FR() - desiredDistanceSensor3;
+    
+    count++;
+    if (count >= 8)
+      break;
+  }
+}
+//void alignRight() {
+//  int count = 0;
+//  
+//  double diff = readRightSensor()- readRightMiddleSensor();//sensor 2 +0.18,sensor1 -0.09 Sensor2, adding allow it to move closer to the wall
+//
+//  Serial.print(diff);
+//  Serial.print("|\n");
+//    
+//  while (abs(diff) > 0.2)
+//  {
+//    
+//    rotateRight(abs(diff*8), abs(diff)/diff);
+//    diff = (readRightSensor()- readRightMiddleSensor());
+//    count++;
+//    if (count >= 6)
+//      break;
+//  }
+//}
+
+// Degree - Number of Degree u want to rotate/ It will rotate right
+void rotateRightDeg(int degree){
+    int output;
+    double dis = degree / 45;
+    int left_speed = 200;
+    int right_speed = 222;
+    float actual_distance = (dis*415) - (5*dis);// 838
+    output = pidControlForward(left_encoder_val, right_encoder_val);
+    md.setSpeeds(left_speed+output,-right_speed+output);
+    if(right_encoder_val >= actual_distance){
+      md.setBrakes(375, 400);
+      delay(2000);
+      Serial.println("left_encoder_val = ");
+      Serial.println(left_encoder_val);
+    
+      Serial.println("right_encoder_val = ");
+      Serial.println(right_encoder_val);
+      
+      right_encoder_val = 0; 
+      left_encoder_val = 0;
+    }
+}
+
+void rotateLeftDeg(int degree){
+    int output;
+    int dis = degree / 45;
+    int left_speed = 200;
+    int right_speed = 222;
+    float actual_distance = (dis*150) - (5*dis);// 838
+    output = myPID.Compute();//     pidControlForward(left_encoder_val, right_encoder_val);
+    md.setSpeeds(-left_speed+output,right_speed+output);
+    if(tick_R >= actual_distance){
+      md.setBrakes(375, 400);
+      delay(2000);
+      Serial.println("left_encoder_val = ");
+      Serial.println(left_encoder_val);
+    
+      Serial.println("right_encoder_val = ");
+      Serial.println(right_encoder_val);
+      
+      tick_R = 0; 
+      tick_L = 0;
+    }
+}
+int pidControlForward(int left_encoder_val, int right_encoder_val){
+  
+  int error, prevError, pwmL = 200, pwmR = 200;
+  
+  float integral, derivative, output;
+  float kp = 2.6; //22
+  float ki = 1;  //0.1
+  float kd = 2;  //2
+
+  error = right_encoder_val - left_encoder_val - 1 ;
+  integral += error;
+  derivative = error - prevError;
+  
+  output = kp*error + ki*integral + kd*derivative;
+  prevError = error;
+
+  pwmR = output;
+  return pwmR;
+  
+}
+
+#include <RunningMedian.h>
+#include "SharpIR.h"
+
+#define motor_R_encoder 5  //Define pins for motor encoder input
+#define motor_L_encoder 3
+
+SharpIR LF(A0, 1080);   //PS1
+SharpIR RF(A1, 1080);   //PS2
+SharpIR CF(A2, 20150);   //PS3
+SharpIR LL(A3, 20150);   //PS4
+SharpIR RM(A4, 1080);   //PS6
+//SharpIR RR(A4, 1080);   //PS5
+
+const int NUM_SAMPLES_MEDIAN = 19;
+double frontL_Value = 0;
+double frontC_Value = 0;
+double frontR_Value = 0;
+double left_Value = 0;
+//double right_Value = 0;
+double rightMiddle_Value = 0;
+
+//read and return the median of (5*11) front left sensor values in grid distance
+int getFrontL() {
+  double median = readFrontSensor_FL();
+  return (shortGrid(median, 4.87, 15.00, 30.00));  
+}
+
+//read and return the median of (5*11) front center sensor values in grid distance
+int getFrontC() {
+  double median = readFrontSensor_FC();
+  return (shortGrid(median, 9.50, 13.70, 22.00));  
+}
+
+//read and return the median of (5*11) front left sensor values in grid distance
+int getFrontR() {
+  double median = readFrontSensor_FR();
+  return (shortGrid(median, 5.50, 17.00, 30.00));  
+}
+
+//read and return the median of (5*11) left sensor values in grid distance
+int getLeft() {
+  double median = readLeftSensor();
+  return (shortGrid(median, 10.30, 16.30, 25.50));  
+}
+
+//read and return the median of (5*11) right middle sensor values in grid distance
+int getRightMiddle() {
+  double median = readRightMiddleSensor();
+  return (shortGrid(median, 6.90, 18.00, 33.00));  
+}
+
+//read and return the median of (5*11) right sensor values in grid distance
+//int getRight() {
+//  double median = readRightSensor();
+//  return (shortGrid(median, 4.06, 16.30, 45.82));  
+//}
+
+
+// front left sensor
+double readFrontSensor_FL() {
+  RunningMedian frontL_Median = RunningMedian(NUM_SAMPLES_MEDIAN);
+  for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
+    double irDistance = LF.distance()-7.5;
+    //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
+    
+    frontL_Median.add(irDistance);    // add in the array  
+    if (frontL_Median.getCount() == NUM_SAMPLES_MEDIAN) {
+      if (frontL_Median.getHighest() - frontL_Median.getLowest() > 50)
+        return -10;
+      frontL_Value = frontL_Median.getMedian();
+    }
+  }
+  return frontL_Value;
+}
+
+// front centre sensor
+double readFrontSensor_FC() {
+  RunningMedian frontC_Median = RunningMedian(NUM_SAMPLES_MEDIAN);
+  for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
+    double irDistance = CF.distance()-9.3;
+    //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
+    
+    frontC_Median.add(irDistance);    // add in the array  
+    if (frontC_Median.getCount() == NUM_SAMPLES_MEDIAN) {
+      if (frontC_Median.getHighest() - frontC_Median.getLowest() > 50)
+        return -10;
+      frontC_Value = frontC_Median.getMedian();
+    }
+  }
+  return frontC_Value;
+}
+
+
+// front right sensor
+double readFrontSensor_FR() {
+  RunningMedian frontR_Median = RunningMedian(NUM_SAMPLES_MEDIAN);
+  for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
+    double irDistance = RF.distance() - 6.5;
+    //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
+    
+    frontR_Median.add(irDistance);    // add in the array  
+    if (frontR_Median.getCount() == NUM_SAMPLES_MEDIAN) {
+      if (frontR_Median.getHighest() - frontR_Median.getLowest() > 15)
+        return -10;
+      frontR_Value = frontR_Median.getMedian();
+    }
+  }
+  return frontR_Value;
+}
+
+// left sensor
+double readLeftSensor() {
+  RunningMedian left_Median = RunningMedian(NUM_SAMPLES_MEDIAN);
+  for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
+    double irDistance = LL.distance() - 9.76;
+    //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
+    
+    left_Median.add(irDistance);    // add in the array  
+    if (left_Median.getCount() == NUM_SAMPLES_MEDIAN) {
+      if (left_Median.getHighest() - left_Median.getLowest() > 15)
+        return -10;
+      left_Value = left_Median.getMedian();
+    }
+  }
+  return left_Value;
+}
+
+
+// right middle sensor
+double readRightMiddleSensor() {
+  RunningMedian rightMiddle_Median = RunningMedian(NUM_SAMPLES_MEDIAN);
+  for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
+    double irDistance = RM.distance() - 10.21;
+    //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
+    
+    rightMiddle_Median.add(irDistance);    // add in the array  
+    if (rightMiddle_Median.getCount() == NUM_SAMPLES_MEDIAN) {
+      if (rightMiddle_Median.getHighest() - rightMiddle_Median.getLowest() > 15)
+        return -10;
+      rightMiddle_Value = rightMiddle_Median.getMedian();
+    }
+  }
+  return rightMiddle_Value;
+}
+
+
+//// right sensor
+//double readRightSensor() {
+//  RunningMedian right_Median = RunningMedian(NUM_SAMPLES_MEDIAN);
+//  for (int n = 0; n < NUM_SAMPLES_MEDIAN; n++) {
+//    double irDistance = RR.distance() - 7.18;
+//    //reference point at 3x3 grid boundary (30cmx30cm) is 0cm
+//    
+//    right_Median.add(irDistance);    // add in the array  
+//    if (right_Median.getCount() == NUM_SAMPLES_MEDIAN) {
+////      if (right_Median.getHighest() - right_Median.getLowest() > 15)
+////        return -10;
+//      right_Value = right_Median.getMedian();
+//    }
+//  }
+//  return  abs(right_Value);
+//}
+
+
+// determine which grid it belongs for short sensor
+int shortGrid(double distance, double offset1, double offset2,  double offset3) {
+  if (distance == -10) 
+    return -1;
+  else if (distance <= offset1)
+    return 1;
+  else if (distance <= offset2)
+    return 2;
+  else if (distance <= offset3)
+    return 3;
+  else
+    return -1;
+}
+
+// determine which grid it belongs for long sensor
+int longGrid(double distance, double offset1, double offset2,  double offset3, double offset4, double offset5, double offset6) {
+  if (distance == -10) 
+    return -1;
+  else if (distance <= offset1)
+    return 1;
+  else if (distance <= offset2)
+    return 2;
+  else if (distance <= offset3)
+    return 3;
+  else if (distance <= offset4)
+    return 4;
+  else if (distance <= offset5)
+    return 5;
+  else if (distance <= offset5)
+    return 6;
+  else
+    return -1;
+}
+
+void printSensorReading() {
+//  print sensor reading to serial monitor
+  Serial.print("A2:"); //Serial.print("FL:");
+  Serial.print((int)getFrontL()); // print front-left sensor distance
+  Serial.print(",");//Serial.print("|FC:");  
+  Serial.print((int)getFrontC()); // print front-center sensor distance
+  Serial.print(",");//Serial.print("|FR:");
+  Serial.print((int)getFrontR()); // print front-right sensor distance
+  Serial.print(",");//Serial.print("|L:");
+  Serial.print((int)getLeft()); // print front-right sensor distance
+  Serial.print(",");//Serial.print("|R1:");
+  Serial.print((int)getRightMiddle()); // print front-right sensor distanced
+//  Serial.print("|R2:");
+//  Serial.print((int)getRight()); // print front-right sensor distance
+  Serial.print("\n");
+  // flush waits for transmission of outoing serial data to complete
+  Serial.flush();
+  delay(10);
+}
+
+void printDistanceReading() {
+  //print sensor reading to serial monitor
+  Serial.print("FL:");
+  Serial.print(readFrontSensor_FL()); // print front-left sensor distance
+  Serial.print("|FC:");  
+  Serial.print(readFrontSensor_FC()); // print front-center sensor distance
+  Serial.print("|FR:");
+  Serial.print(readFrontSensor_FR()); // print front-right sensor distance
+  Serial.print("|LL:");
+  Serial.print(readLeftSensor()); // print left sensor distance
+  Serial.print("|R1:");
+  Serial.print(readRightMiddleSensor()); // print right-middle sensor distance
+//  Serial.print("|R2:");
+//  Serial.print(readRightSensor()); // print right sensor distance
+  Serial.print("|\n");
+  // flush waits for transmission of outoing serial data to complete
+  Serial.flush();
+  delay(1000);
+}
+
+///////////////////////////////////////////////////END OF MOTOR///////////////////////////////////////////////////

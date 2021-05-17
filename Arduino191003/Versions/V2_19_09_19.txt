@@ -1,0 +1,126 @@
+#include "DualVNH5019MotorShield.h"
+#include "PinChangeInt.h"
+
+DualVNH5019MotorShield md;
+
+#define motor_R_encoder 11 //Define pins for motor encoder input
+#define motor_L_encoder 3
+
+#define MAX_SPEED 400
+#define testSpeed 200
+
+//For counting Encoder using interrupt
+int right_encoder_val = 0, left_encoder_val = 0;
+void RightEncoderInc(){right_encoder_val++;}
+void LeftEncoderInc(){left_encoder_val++;}
+float piControlForward(float left, float right);
+void moveForward(int distance,int left_speed,int right_speed);
+void rotate(int degree);
+
+void setup() {
+  Serial.begin(115200);
+  md.init();
+  PCintPort::attachInterrupt(motor_R_encoder, RightEncoderInc, FALLING);
+  PCintPort::attachInterrupt(motor_L_encoder, LeftEncoderInc, FALLING);
+}
+
+// 200 for right is 222 for left
+void loop() {
+  
+  // Left_Speed - 222
+// Right_Speed - 200
+// moveForward(4,222,200);
+// delay(500);
+// moveForward(4,-222,-200);
+
+  /*moveForward(int gridBurst,int leftwheelpower, int rightwheelpower )function
+   * need to adjust value of the left and right power, 
+   *takes into account that one wheel is stronger than the other so right wheel needs to compensate
+   *Do not change the kp,ki,kd values anymore and just change the power given to the wheels.
+   //Works as of 13/09/19, able to move straight for >100cm in shorts bursts
+  */
+  
+  moveForward(1,200,228);//228 
+        Serial.print("left_encoder_val = ");
+        Serial.print(left_encoder_val);
+        Serial.print(":");
+        Serial.print("right_encoder_val = ");
+        Serial.println(right_encoder_val);
+
+  /*rotate(int degrees)
+   * rotate in clockwise direction calibrated as of 13/09/19
+   * need to change the left and right speed of the wheels in order to stop at the right angle
+   */
+  //rotate(850);    
+}
+
+
+
+
+
+int pidControlForward(int left_encoder_val, int right_encoder_val){
+  
+  int error, prevError, pwmL = testSpeed, pwmR = testSpeed;
+ 
+  float integral, derivative, output;
+  float kp = 35;
+  float ki = 1;
+  float kd = 1;
+
+  error = right_encoder_val - left_encoder_val - 1 ;
+  integral += error;
+  derivative = error - prevError;
+  
+  output = kp*error + ki*integral + kd*derivative;
+  prevError = error;
+
+  pwmR = output;
+  return pwmR;
+  
+}
+
+// Distance - input "1" for 10 cm
+// Left_Speed - 222
+// Right_Speed - 200
+
+void moveForward(int distance,int left_speed,int right_speed){
+      int output;
+      float actual_distance = (distance*323) - (20*distance); //261-277 323 is the tick required to move 10 cm
+      output = pidControlForward(left_encoder_val, right_encoder_val);
+      md.setSpeeds(left_speed+output,right_speed-output);
+      if(right_encoder_val >= actual_distance) {
+        md.setBrakes(375, 400);
+        delay(2000);
+//        Serial.print("left_encoder_val = ");
+//        Serial.print(left_encoder_val);
+//        Serial.print(":");
+//        Serial.print("right_encoder_val = ");
+//        Serial.println(right_encoder_val);
+        
+        right_encoder_val = 0; 
+        left_encoder_val = 0;
+    }
+}
+
+// Degree - Number of Degree u want to rotate/ It will rotate right
+void rotate(int degree){
+      int output;
+      int dis = degree / 90;
+      int left_speed = 222;
+      int right_speed = 200;
+      float actual_distance = (dis*405) - (5*dis);
+      output = pidControlForward(left_encoder_val, right_encoder_val);
+      md.setSpeeds(left_speed+output,-right_speed+output);
+      if(right_encoder_val >= actual_distance){
+        md.setBrakes(375, 400);
+        delay(2000);
+        Serial.println("left_encoder_val = ");
+        Serial.println(left_encoder_val);
+      
+        Serial.println("right_encoder_val = ");
+        Serial.println(right_encoder_val);
+        
+        right_encoder_val = 0; 
+        left_encoder_val = 0;
+      }
+}
